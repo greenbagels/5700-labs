@@ -37,14 +37,30 @@ int main(int argc, char* argv[])
 
     arr t1, t2, y1, y2, dy1, dy2;
     std::string input_fname(argv[1]);
+    // The input is of the form A.BC_khz.dat
+    // So if we parse it, we just take the first 4 chars, and parse as double
+
+    double w = std::stod(input_fname.substr(0,4)) * 1000. * 2.*M_PI;
+
+    double R = 109.;
+    double L = 0.01;
+    double C = 0.22e-6;
+
+    double w0 = 1. / std::sqrt(L * C);
+    double gamma = R / L;
+    double V0 = 0.25;
+
     read_data(input_fname, t1, y1, dy1, t2, y2, dy2);
 
-    std::vector<double> init_vals = {{0.3, 2*M_PI*1000, 0., 0.}};
+    std::vector<double> init_vals = {{V0, w, 0., 0.}};
 
     minimizer::nonlinear_ls<std::vector<double>> fitter(t1, y1, dy1, sin_f, sin_df, sin_fvv, init_vals); 
 
     fitter.fit();
     fitter.print_results();
+
+    init_vals[0] *= w0 * w0 / std::sqrt(std::pow(w0 * w0 - w * w, 2) + gamma * gamma * w * w);
+    init_vals[2] = M_PI / 2. + std::atan((w * w - w0 * w0)/(w * gamma));
 
     auto fitter2 = minimizer::nonlinear_ls<std::vector<double>>(t2, y2, dy2, sin_f, sin_df, sin_fvv, init_vals); 
 
