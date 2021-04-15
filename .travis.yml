@@ -1,0 +1,14 @@
+language: cpp
+dist: bionic
+
+addons:
+  apt:
+    packages:
+      - libgsl-dev
+      - libblas-dev
+
+compiler:
+  - clang
+  - gcc
+
+script: make all
