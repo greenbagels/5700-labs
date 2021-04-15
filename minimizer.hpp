@@ -125,6 +125,29 @@ namespace minimizer
                 std::cout << "Elapsed time = " << last_time.count() << " seconds.\n";
             }
 
+            double reduced_chisq() const
+            {
+                return chisq/(n-p);
+            }
+
+            double parameter(std::size_t i) const
+            {
+                if (i >= p)
+                {
+                    throw std::runtime_error("Desired parameter index does not exist");
+                }
+                return gsl_vector_get(workspace->x, i);
+            }
+
+            double uncertainty(std::size_t i) const
+            {
+                if (i >= p)
+                {
+                    throw std::runtime_error("Desired uncertainty index does not exist");
+                }
+                return sqrt(gsl_matrix_get(covar, i, i) * reduced_chisq());
+            }
+
             ~nonlinear_ls()
             {
                 gsl_multifit_nlinear_free(workspace);

@@ -37,35 +37,82 @@ int main(int argc, char* argv[])
 
     arr t1, t2, y1, y2, dy1, dy2;
     std::string input_fname(argv[1]);
+
     // The input is of the form A.BC_khz.dat
     // So if we parse it, we just take the first 4 chars, and parse as double
-
+    // Convert filename frequency into angular frequency, in rad/sec
     double w = std::stod(input_fname.substr(0,4)) * 1000. * 2.*M_PI;
 
-    double R = 109.;
+    // Hard coded circuit parameters, we can change these to file parameters later
+    double R = 9. + 220. + 470.;
     double L = 0.01;
     double C = 0.22e-6;
 
+    // Calculate the estimated circuit response parameters
     double w0 = 1. / std::sqrt(L * C);
     double gamma = R / L;
-    double V0 = 0.25;
+    double V0 = 0.12;
 
+    std::cout << "Expected: w0 = " << w0 << "\tgamma = " << gamma << "\n";
+    // Read chan1, chan2 data
     read_data(input_fname, t1, y1, dy1, t2, y2, dy2);
 
     std::vector<double> init_vals = {{V0, w, 0., 0.}};
 
+    // Fit the first set of parameters, aka CH_A, the input signal
     minimizer::nonlinear_ls<std::vector<double>> fitter(t1, y1, dy1, sin_f, sin_df, sin_fvv, init_vals); 
-
     fitter.fit();
     fitter.print_results();
 
+    // Use the estimated response parameters as our initial guess
+    // Multiply input voltage by the ratio V_c/V_in (see the "Useful fitting quantities" module)
     init_vals[0] *= w0 * w0 / std::sqrt(std::pow(w0 * w0 - w * w, 2) + gamma * gamma * w * w);
+    // Now, add the phase difference to our fitted phase
     init_vals[2] = M_PI / 2. + std::atan((w * w - w0 * w0)/(w * gamma));
 
+    // And now run the fitter for V_c!
     auto fitter2 = minimizer::nonlinear_ls<std::vector<double>>(t2, y2, dy2, sin_f, sin_df, sin_fvv, init_vals); 
-
     fitter2.fit();
     fitter2.print_results();
+
+    // We're going to loop over the files in bash, so just append for now
+    std::ofstream amp_file("rel_amplitudes.dat", std::ios::app);
+    std::ofstream phase_file("phase_diff.dat", std::ios::app);
+
+    double rel_amp = fitter2.parameter(0) / fitter.parameter(0);
+    // Propagate uncertainties...
+    double drel_amp = rel_amp * std::sqrt( std::pow(fitter.uncertainty(0)/fitter.parameter(0), 2)
+                                         + std::pow(fitter2.uncertainty(0)/fitter2.parameter(0), 2)
+                                         );
+
+    double phase_diff = fitter2.parameter(2) - fitter.parameter(2);
+    double dphase = std::sqrt(std::pow(fitter.uncertainty(2),2) + std::pow(fitter2.uncertainty(2), 2));
+
+    /*
+    if (rel_amp < 0)
+    {
+        // sin(x) = -sin(x +/- pi), so the fitter can sometimes try to fit a shifted-inverted sine.
+        // in that case, we have to correct this (and recalculate the phase modulo [-pi/2, 3pi/2].
+        rel_amp *= -1;
+        drel_amp *= -1;
+
+        phase_diff += M_PI;
+    }
+    */
+
+    /*
+    // We can optimize this later, just get it running for now
+    while (phase_diff < -M_PI/2.)
+    {
+        phase_diff += 2*M_PI;
+    }
+    while (phase_diff > 1.5 * M_PI)
+    {
+        phase_diff -= 2*M_PI;
+    }*/
+
+    amp_file << w << " " << rel_amp << " " << drel_amp << "\n";
+    phase_file << w << " " << phase_diff << " " << dphase << "\n";
 
     return 0;
 }
